@@ -1,6 +1,6 @@
 ---
 name: prd-manager
-description: Gera documentos de Product Requirements Document (PRD) estruturados em markdown seguindo o template SandecoClaw.
+description: Gera documentos de Product Requirements Document (PRD) estruturados em markdown seguindo o template DaniClaw.
 ---
 
 # Skill: PRD Manager
