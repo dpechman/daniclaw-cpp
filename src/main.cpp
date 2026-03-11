@@ -23,6 +23,22 @@ int main() {
 
     log().info("🚀 Iniciando DaniClaw C++...");
 
+    // Log do provider e modelo configurados
+    {
+        std::string provider = cfg().get("LLM_PROVIDER", "groq");
+        std::string modelKey = provider + "_MODEL";
+        // Normaliza para uppercase para buscar a chave
+        for (auto& c : modelKey) c = ::toupper(c);
+        std::string model = cfg().get(modelKey);
+        if (model.empty()) {
+            // fallback: tenta com o nome original
+            std::string mk2 = provider + "_MODEL";
+            mk2[0] = ::toupper(mk2[0]);
+            model = cfg().get(mk2, "?");
+        }
+        log().info("🧠 Provider: {}  |  Modelo: {}", provider, model);
+    }
+
     // Inicializa libcurl globalmente
     curl_global_init(CURL_GLOBAL_ALL);
 
