@@ -1,0 +1,29 @@
+build/
+build-debug/
+.cache/
+compile_commands.json
+sandeclaw
+daniclaw
+
+# Dados locais
+data/
+*.db
+*.db-wal
+*.db-shm
+.tz_override
+
+# Temporários
+tmp/
+
+# Segredos
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

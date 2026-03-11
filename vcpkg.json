@@ -1,0 +1,12 @@
+{
+  "name": "daniclaw-cpp",
+  "version": "1.0.0",
+  "description": "DaniClaw C++ — agente local de IA via Telegram",
+  "dependencies": [
+    "nlohmann-json",
+    "spdlog",
+    "sqlite3",
+    "curl",
+    "yaml-cpp"
+  ]
+}
