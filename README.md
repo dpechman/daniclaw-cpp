@@ -44,11 +44,33 @@ O projeto usa o `vcpkg` para gerenciar dependências C++ (`curl`, `nlohmann_json
    ./build/sandeclaw
    ```
 
+## Ferramentas disponíveis (Tools)
+
+O agente possui acesso às seguintes ferramentas, registradas automaticamente no `ToolRegistry`:
+
+| Tool | Nome interno | Descrição |
+|------|-------------|-----------|
+| `WebSearchTool` | `pesquisar_internet` | Pesquisa no Google via [Serper.dev](https://serper.dev). Args: `query`, `num` (opcional, padrão 5). |
+| `ShellTool` | `executar_comando` | Executa um comando shell e retorna stdout + stderr. |
+| `CreateFileTool` | `criar_arquivo` | Cria um arquivo local com conteúdo fornecido. Args: `filepath`, `content`. |
+| `ReadFileTool` | `ler_arquivo` | Lê e retorna o conteúdo de um arquivo local. Args: `filepath`. |
+| `ScheduleReminderTool` | `agendar_lembrete` | Agenda envio de mensagem no futuro. Args: `chat_id`, `message`, `delay_minutes` ou `data_iso_utc`. |
+| `SetTimezoneTool` | `definir_timezone` | Define o fuso horário do assistente. Args: `offset_hours` (ex: `-3` para BRT). |
+
+### Configuração da pesquisa na internet
+
+Crie uma conta em [serper.dev](https://serper.dev) (2.500 buscas/mês gratuitas, sem cartão) e adicione a chave no `.env`:
+
+```env
+SERPER_API_KEY=sua_chave_aqui
+```
+
 ## Estrutura do Projeto
 
 * `src/main.cpp` - Ponto de entrada.
 * `src/telegram/` - Cliente bot via Long Polling + JSON.
 * `src/agent/` - Loop ReAct portado.
 * `src/skills/` - Carregador de hot-reload em YAML e sistema de rotas por LLM.
+* `src/tools/` - Ferramentas do agente (tools), cada uma herda `BaseTool`.
 * `src/database/` - SQLite3 nativo com transações seguras Thread/WAL.
 * `data/`, `.agents/`, `tmp/` e `output/` - Espelham a arquitetura da versão TS.
