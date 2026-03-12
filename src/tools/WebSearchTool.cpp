@@ -34,8 +34,7 @@ ToolResult WebSearchTool::execute(const std::map<std::string, std::string>& args
     };
 
     std::map<std::string, std::string> headers = {
-        {"X-API-KEY",     apiKey},
-        {"Content-Type",  "application/json"}
+        {"X-API-KEY", apiKey}
     };
 
     log().info("[WebSearchTool] Buscando: {}", qIt->second);
