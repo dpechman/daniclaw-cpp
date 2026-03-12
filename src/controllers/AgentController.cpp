@@ -6,6 +6,7 @@
 #include "../tools/ScheduleReminderTool.h"
 #include "../tools/SetTimezoneTool.h"
 #include "../tools/ShellTool.h"
+#include "../tools/WebSearchTool.h"
 #include "../utils/Utils.h"
 #include <sstream>
 #include <filesystem>
@@ -32,6 +33,7 @@ AgentController::AgentController(TelegramBot& bot)
     toolRegistry_->registerTool(std::make_shared<ScheduleReminderTool>());
     toolRegistry_->registerTool(std::make_shared<SetTimezoneTool>());
     toolRegistry_->registerTool(std::make_shared<ShellTool>());
+    toolRegistry_->registerTool(std::make_shared<WebSearchTool>());
 
     // Garante que pastas existam
     for (auto& dir : {"./tmp", "./output", "./data"}) {
