@@ -41,7 +41,7 @@ O projeto usa o `vcpkg` para gerenciar dependências C++ (`curl`, `nlohmann_json
 
 2. Inicie o bot:
    ```sh
-   ./build/sandeclaw
+   ./build/daniclaw
    ```
 
 ## Ferramentas disponíveis (Tools)
