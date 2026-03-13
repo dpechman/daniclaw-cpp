@@ -73,6 +73,10 @@ int main() {
         TelegramBot bot(token);
         gBot = &bot;
 
+        // Graceful shutdown — registra sinais antes de qualquer thread de background
+        std::signal(SIGINT,  signalHandler);
+        std::signal(SIGTERM, signalHandler);
+
         AgentController controller(bot);
         controller.registerHandlers();
 
@@ -89,10 +93,6 @@ int main() {
         if (cfg().get("GMAIL_ENABLED", "false") == "true") {
             gmail.start();
         }
-
-        // Graceful shutdown
-        std::signal(SIGINT,  signalHandler);
-        std::signal(SIGTERM, signalHandler);
 
         log().info("🤖 DaniClaw C++ online! Aguardando mensagens no Telegram...");
         bot.start(); // bloqueante

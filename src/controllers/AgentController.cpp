@@ -334,6 +334,7 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
         });
 
         // Thread auxiliar: renova "typing" a cada 4s enquanto o loop estiver ativo
+        // RAII guard garante join mesmo em caso de excecao
         std::atomic<bool> loopDone{false};
         std::thread typingThread([this, chatId, &loopDone]() {
             while (!loopDone.load()) {
@@ -341,6 +342,11 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
                 if (!loopDone.load()) bot_.sendChatAction(chatId, "typing");
             }
         });
+        struct ThreadGuard {
+            std::thread& t;
+            std::atomic<bool>& done;
+            ~ThreadGuard() { done.store(true); if (t.joinable()) t.join(); }
+        } guard{typingThread, loopDone};
 
         auto result = loop.run(context, sysPrompt, requiresAudio);
         loopDone.store(true);
