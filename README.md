@@ -65,6 +65,61 @@ Crie uma conta em [serper.dev](https://serper.dev) (2.500 buscas/mês gratuitas,
 SERPER_API_KEY=sua_chave_aqui
 ```
 
+## Personalizando o Assistente com Skills
+
+Skills são "modos de comportamento" carregados dinamicamente que transformam o DaniClaw em qualquer tipo de assistente especializado — sem recompilar o código.
+
+### Como funciona
+
+1. O `SkillLoader` escaneia a pasta `.agents/skills/` a cada requisição (hot-reload).
+2. O `SkillRouter` usa um LLM leve para detectar qual skill usar com base na mensagem do usuário.
+3. O conteúdo da skill é injetado no system prompt da conversa.
+
+### Criando uma skill nova
+
+Crie uma pasta com o nome da skill dentro de `.agents/skills/` e adicione um arquivo `SKILL.md`:
+
+```
+.agents/
+└── skills/
+    └── minha-skill/
+        └── SKILL.md
+```
+
+O `SKILL.md` segue este formato:
+
+```markdown
+---
+name: minha-skill
+description: Uma linha descrevendo quando esta skill deve ser ativada.
+---
+
+# Skill: Minha Skill
+
+Você é um [papel/persona] especializado em [domínio].
+
+## Instruções
+[Descreva aqui como o assistente deve se comportar, responder, formatar as respostas, etc.]
+```
+
+### Exemplos de skills que você pode criar
+
+| Skill | Descrição no frontmatter |
+|-------|--------------------------|
+| Suporte técnico | "Atende chamados de suporte de TI, coleta informações e escala quando necessário." |
+| Chef culinário | "Sugere receitas com base nos ingredientes disponíveis e restrições alimentares." |
+| Tutor de idiomas | "Corrige texto em inglês, explica erros gramaticais e sugere alternativas naturais." |
+| Analista financeiro | "Interpreta dados financeiros, calcula indicadores e explica conceitos de investimento." |
+| Assistente jurídico | "Resume documentos legais em linguagem simples e identifica cláusulas de risco." |
+
+### Dicas
+
+- **`description`** é o texto que o LLM usa para decidir se deve ativar a skill — seja específico.
+- Uma skill pode conter **exemplos de input/output** para guiar melhor o comportamento.
+- Skills convivem com as **tools** — o agente pode pesquisar na internet, executar comandos e ainda seguir as instruções da skill ao mesmo tempo.
+- Para desativar uma skill temporariamente, basta renomear o arquivo para `SKILL.md.disabled`.
+- O provedor usado para rotear skills é configurável via `SKILL_ROUTER_PROVIDER` no `.env` — use um modelo mais barato para economizar.
+
 ## Estrutura do Projeto
 
 * `src/main.cpp` - Ponto de entrada.
