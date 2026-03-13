@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(daniclaw-cpp VERSION 1.0.0 LANGUAGES CXX)
+project(daniclaw-cpp VERSION 1.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,7 +21,11 @@ file(GLOB_RECURSE SOURCES
     "src/**/*.cpp"
 )
 
-add_executable(daniclaw ${SOURCES})
+# sqlite-vec é C puro — compilado separadamente
+set(SQLITE_VEC_SRC src/vendor/sqlite-vec/sqlite-vec.c)
+set_source_files_properties(${SQLITE_VEC_SRC} PROPERTIES LANGUAGE C)
+
+add_executable(daniclaw ${SOURCES} ${SQLITE_VEC_SRC})
 
 target_include_directories(daniclaw PRIVATE src)
 

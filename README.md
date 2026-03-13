@@ -56,6 +56,8 @@ O agente possui acesso às seguintes ferramentas, registradas automaticamente no
 | `ReadFileTool` | `ler_arquivo` | Lê e retorna o conteúdo de um arquivo local. Args: `filepath`. |
 | `ScheduleReminderTool` | `agendar_lembrete` | Agenda envio de mensagem no futuro. Args: `chat_id`, `message`, `delay_minutes` ou `data_iso_utc`. |
 | `SetTimezoneTool` | `definir_timezone` | Define o fuso horário do assistente. Args: `offset_hours` (ex: `-3` para BRT). |
+| `IndexDocumentTool` | `indexar_documento` | Indexa um arquivo na base RAG. Args: `filepath`, `chunk_size` (opcional), `force` (opcional). |
+| `SemanticSearchTool` | `busca_semantica` | Busca documentos indexados por similaridade semântica. Args: `query`, `top_k` (opcional). |
 
 ### Configuração da pesquisa na internet
 
@@ -64,6 +66,31 @@ Crie uma conta em [serper.dev](https://serper.dev) (2.500 buscas/mês gratuitas,
 ```env
 SERPER_API_KEY=sua_chave_aqui
 ```
+
+### Base de conhecimento RAG (busca semântica)
+
+O DaniClaw suporta RAG (Retrieval-Augmented Generation) com [sqlite-vec](https://github.com/asg017/sqlite-vec) embutido — sem servidor externo.
+
+**Como usar:**
+
+1. Adicione as vars ao `.env`:
+   ```env
+   EMBEDDING_MODEL=text-embedding-3-small
+   EMBEDDING_DIMS=1536
+   ```
+
+2. Peça ao bot para indexar um documento:
+   ```
+   indexa o arquivo /data/docs/manual.txt
+   ```
+
+3. O agente usará automaticamente `busca_semantica` ao responder perguntas sobre o conteúdo indexado.
+
+**Detalhes técnicos:**
+- Embeddings gerados via OpenAI (`text-embedding-3-small`, ~$0.02/1M tokens)
+- Vetores armazenados no mesmo SQLite via extensão `vec0`
+- Chunking automático com overlap (padrão: 800 chars, overlap 100)
+- Para reindexar um arquivo: `force=true`
 
 ## Personalizando o Assistente com Skills
 

@@ -4,7 +4,15 @@
 #include "config/Config.h"
 #include "utils/Logger.h"
 #include "database/Database.h"
+#include "rag/VectorStore.h"
 #include "telegram/TelegramBot.h"
+
+// sqlite-vec: registra extensão antes de qualquer sqlite3_open
+#define SQLITE_CORE 1
+extern "C" {
+#include "vendor/sqlite-vec/sqlite-vec.h"
+}
+namespace { const auto _vecReg = (sqlite3_auto_extension(reinterpret_cast<void(*)(void)>(sqlite3_vec_init)), 0); }
 #include "controllers/AgentController.h"
 #include "reminders/ReminderManager.h"
 
@@ -45,6 +53,9 @@ int main() {
     try {
         // Banco de dados
         Database::getInstance().initialize();
+
+        // RAG — base de conhecimento vetorial
+        VectorStore::initialize(cfg().getInt("EMBEDDING_DIMS", 1536));
 
         // Token do bot
         std::string token = cfg().get("TELEGRAM_BOT_TOKEN");
