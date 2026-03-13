@@ -15,6 +15,9 @@
 #include <fstream>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
+#include <thread>
+#include <atomic>
+#include <chrono>
 
 AgentController::AgentController(TelegramBot& bot)
     : bot_(bot)
@@ -293,7 +296,13 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
             "- Para intervalos relativos (ex: 'em 5 minutos', 'daqui a 1 hora'), "
             "use `delay_minutes` com o número de minutos. NÃO calcule ISO manualmente.\n"
             "- Só use `data_iso_utc` se o usuário informar um horário absoluto exato (já converta para UTC).\n"
-            "- O campo `message` deve ser uma frase direta, ex: 'Tomar remédio'.";
+            "- O campo `message` deve ser uma frase direta, ex: 'Tomar remedio'.\n\n"
+            "REGRAS DE COMPORTAMENTO:\n"
+            "- NUNCA responda com frases do tipo 'vou verificar', 'um momento', 'aguarde' "
+            "sem IMEDIATAMENTE chamar a ferramenta necessaria no mesmo turno.\n"
+            "- Se precisar buscar informacao, executar um comando ou qualquer acao externa, "
+            "chame a ferramenta AGORA. Responda ao usuario SOMENTE quando tiver a resposta completa.\n"
+            "- Se nao for possivel obter a informacao, diga diretamente o motivo sem rodeios.";
 
         if (skill.has_value()) {
             sysPrompt += "\n\n## Skill Ativa: " + skill->name + "\n" + skill->content;
@@ -307,7 +316,35 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
         // 6. Executa AgentLoop
         auto provider = ProviderFactory::create();
         AgentLoop loop(provider, toolRegistry_);
+
+        // Mensagens de progresso por ferramenta
+        static const std::map<std::string, std::string> kToolMsg = {
+            {"pesquisar_internet",  "\xf0\x9f\x94\x8d Pesquisando na internet..."},
+            {"executar_comando",    "\xe2\x9a\x99\xef\xb8\x8f Executando comando..."},
+            {"busca_semantica",     "\xf0\x9f\xa7\xa0 Consultando base de conhecimento..."},
+            {"indexar_documento",   "\xf0\x9f\x93\x9a Indexando documento..."},
+        };
+
+        loop.setStepCallback([this, chatId](const std::string& toolName, int /*iter*/) {
+            bot_.sendChatAction(chatId, "typing");
+            auto it = kToolMsg.find(toolName);
+            if (it != kToolMsg.end()) {
+                bot_.sendMessage(chatId, it->second);
+            }
+        });
+
+        // Thread auxiliar: renova "typing" a cada 4s enquanto o loop estiver ativo
+        std::atomic<bool> loopDone{false};
+        std::thread typingThread([this, chatId, &loopDone]() {
+            while (!loopDone.load()) {
+                std::this_thread::sleep_for(std::chrono::seconds(4));
+                if (!loopDone.load()) bot_.sendChatAction(chatId, "typing");
+            }
+        });
+
         auto result = loop.run(context, sysPrompt, requiresAudio);
+        loopDone.store(true);
+        typingThread.join();
 
         // 7. Persiste resposta
         if (cfg().get("MEMORY_ENABLED", "true") != "false") {

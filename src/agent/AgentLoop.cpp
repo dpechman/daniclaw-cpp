@@ -59,6 +59,9 @@ AgentLoopResult AgentLoop::run(
                 return s;
             }());
 
+        // Notifica o controlador antes de executar a tool
+        if (stepCallback_) stepCallback_(toolCall->name, iter);
+
         BaseTool* tool = registry_->get(toolCall->name);
         std::string observation;
 
