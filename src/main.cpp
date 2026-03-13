@@ -15,12 +15,15 @@ extern "C" {
 namespace { const auto _vecReg = (sqlite3_auto_extension(reinterpret_cast<void(*)(void)>(sqlite3_vec_init)), 0); }
 #include "controllers/AgentController.h"
 #include "reminders/ReminderManager.h"
+#include "integrations/GmailPoller.h"
 
-static TelegramBot* gBot = nullptr;
-static ReminderManager* gRM = nullptr;
+static TelegramBot*      gBot = nullptr;
+static ReminderManager*  gRM  = nullptr;
+static GmailPoller*      gGmail = nullptr;
 
 void signalHandler(int signum) {
     log().info("🛑 Sinal {} recebido. Encerrando DaniClaw...", signum);
+    if (gGmail) gGmail->stop();
     if (gRM) gRM->stop();
     if (gBot) gBot->stop();
 }
@@ -54,8 +57,10 @@ int main() {
         // Banco de dados
         Database::getInstance().initialize();
 
-        // RAG — base de conhecimento vetorial
-        VectorStore::initialize(cfg().getInt("EMBEDDING_DIMS", 1536));
+        // RAG — base de conhecimento vetorial (opcional)
+        if (cfg().get("TOOL_RAG_ENABLED", "true") != "false") {
+            VectorStore::initialize(cfg().getInt("EMBEDDING_DIMS", 1536));
+        }
 
         // Token do bot
         std::string token = cfg().get("TELEGRAM_BOT_TOKEN");
@@ -74,7 +79,16 @@ int main() {
         // Inicia sistema de lembretes em background (checa o BD a cada 10 seg)
         ReminderManager rm(bot);
         gRM = &rm;
-        rm.start(10000);
+        if (cfg().get("TOOL_REMINDERS_ENABLED", "true") != "false") {
+            rm.start(10000);
+        }
+
+        // Monitor de emails Gmail via IMAPS (opcional)
+        GmailPoller gmail(bot);
+        gGmail = &gmail;
+        if (cfg().get("GMAIL_ENABLED", "false") == "true") {
+            gmail.start();
+        }
 
         // Graceful shutdown
         std::signal(SIGINT,  signalHandler);

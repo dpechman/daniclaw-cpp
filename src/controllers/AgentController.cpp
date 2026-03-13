@@ -13,6 +13,8 @@
 #include <sstream>
 #include <filesystem>
 #include <fstream>
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
 
 AgentController::AgentController(TelegramBot& bot)
     : bot_(bot)
@@ -29,15 +31,31 @@ AgentController::AgentController(TelegramBot& bot)
         if (!id.empty()) allowedUserIds_.insert(id);
     }
 
-    // Registra ferramentas padrão
-    toolRegistry_->registerTool(std::make_shared<CreateFileTool>());
-    toolRegistry_->registerTool(std::make_shared<ReadFileTool>());
-    toolRegistry_->registerTool(std::make_shared<ScheduleReminderTool>());
-    toolRegistry_->registerTool(std::make_shared<SetTimezoneTool>());
-    toolRegistry_->registerTool(std::make_shared<ShellTool>());
-    toolRegistry_->registerTool(std::make_shared<WebSearchTool>());
-    toolRegistry_->registerTool(std::make_shared<SemanticSearchTool>());
-    toolRegistry_->registerTool(std::make_shared<IndexDocumentTool>());
+    // Registra ferramentas padrão (cada uma pode ser desabilitada no .env)
+    auto enabled = [](const std::string& key) {
+        return cfg().get(key, "true") != "false";
+    };
+
+    if (enabled("TOOL_FILE_ENABLED")) {
+        toolRegistry_->registerTool(std::make_shared<CreateFileTool>());
+        toolRegistry_->registerTool(std::make_shared<ReadFileTool>());
+    }
+    if (enabled("TOOL_REMINDERS_ENABLED")) {
+        toolRegistry_->registerTool(std::make_shared<ScheduleReminderTool>());
+    }
+    if (enabled("TOOL_TIMEZONE_ENABLED")) {
+        toolRegistry_->registerTool(std::make_shared<SetTimezoneTool>());
+    }
+    if (enabled("TOOL_SHELL_ENABLED")) {
+        toolRegistry_->registerTool(std::make_shared<ShellTool>());
+    }
+    if (enabled("TOOL_WEB_SEARCH_ENABLED")) {
+        toolRegistry_->registerTool(std::make_shared<WebSearchTool>());
+    }
+    if (enabled("TOOL_RAG_ENABLED")) {
+        toolRegistry_->registerTool(std::make_shared<SemanticSearchTool>());
+        toolRegistry_->registerTool(std::make_shared<IndexDocumentTool>());
+    }
 
     // Garante que pastas existam
     for (auto& dir : {"./tmp", "./output", "./data"}) {
@@ -46,9 +64,17 @@ AgentController::AgentController(TelegramBot& bot)
 }
 
 void AgentController::registerHandlers() {
+    auto enabled = [](const std::string& key) {
+        return cfg().get(key, "true") != "false";
+    };
+
     bot_.onText([this](const Telegram::Message& msg) { handleText(msg); });
-    bot_.onDocument([this](const Telegram::Message& msg) { handleDocument(msg); });
-    bot_.onVoice([this](const Telegram::Message& msg) { handleVoice(msg); });
+    if (enabled("DOCUMENT_ENABLED")) {
+        bot_.onDocument([this](const Telegram::Message& msg) { handleDocument(msg); });
+    }
+    if (enabled("VOICE_ENABLED")) {
+        bot_.onVoice([this](const Telegram::Message& msg) { handleVoice(msg); });
+    }
     log().info("[AgentController] Handlers registrados.");
 }
 
@@ -78,6 +104,7 @@ void AgentController::handleText(const Telegram::Message& msg) {
         msg.text.substr(0, std::min<size_t>(msg.text.size(), 80)));
 
     bool audio = detectAudioRequest(msg.text);
+    if (cfg().get("TTS_ENABLED", "true") == "false") audio = false;
     bot_.sendChatAction(msg.chatId, "typing");
     processInput(msg.chatId, std::to_string(msg.from.id), msg.text, audio);
 }
@@ -128,22 +155,118 @@ void AgentController::handleDocument(const Telegram::Message& msg) {
 
 void AgentController::handleVoice(const Telegram::Message& msg) {
     if (!isAllowed(msg.from.id)) return;
-    bot_.sendMessage(msg.chatId,
-        "🎙️ Recebi seu áudio! A transcrição via Whisper requer configuração adicional. "
-        "Por enquanto, envie sua mensagem por texto.");
+
+    const std::string fileId = msg.hasVoice ? msg.voice.fileId : msg.audio.fileId;
+    if (fileId.empty()) return;
+
+    bot_.sendChatAction(msg.chatId, "record_voice");
+
+    std::string tmpPath = "./tmp/voice_" + std::to_string(msg.messageId) + ".oga";
+    if (!bot_.downloadFile(fileId, tmpPath)) {
+        bot_.sendMessage(msg.chatId, "⚠️ Falha ao baixar o áudio.");
+        return;
+    }
+
+    std::string transcript = transcribeAudio(tmpPath);
+    std::filesystem::remove(tmpPath);
+
+    if (transcript.empty()) {
+        bot_.sendMessage(msg.chatId, "⚠️ Não consegui transcrever o áudio. Tente novamente.");
+        return;
+    }
+
+    log().info("[Voice] Transcrição: {}", transcript.substr(0, 120));
+    // Áudio de entrada → responde em áudio automaticamente
+    bool audioReply = cfg().get("TTS_ENABLED", "true") != "false";
+    processInput(msg.chatId, std::to_string(msg.from.id), transcript, audioReply);
+}
+
+std::string AgentController::transcribeAudio(const std::string& filePath) {
+    using json = nlohmann::json;
+
+    std::string apiKey = cfg().get("OPENAI_API_KEY");
+    if (apiKey.empty()) {
+        log().error("[STT] OPENAI_API_KEY não configurada.");
+        return "";
+    }
+    std::string model = cfg().get("WHISPER_MODEL", "whisper-1");
+    std::string language = cfg().get("WHISPER_LANGUAGE", "pt");
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return "";
+
+    struct curl_mime* form = curl_mime_init(curl);
+    curl_mimepart* field;
+
+    field = curl_mime_addpart(form);
+    curl_mime_name(field, "model");
+    curl_mime_data(field, model.c_str(), CURL_ZERO_TERMINATED);
+
+    if (!language.empty()) {
+        field = curl_mime_addpart(form);
+        curl_mime_name(field, "language");
+        curl_mime_data(field, language.c_str(), CURL_ZERO_TERMINATED);
+    }
+
+    field = curl_mime_addpart(form);
+    curl_mime_name(field, "file");
+    curl_mime_filedata(field, filePath.c_str());
+
+    std::string authHeader = "Authorization: Bearer " + apiKey;
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, authHeader.c_str());
+
+    std::string responseBody;
+    curl_easy_setopt(curl, CURLOPT_URL, "https://api.openai.com/v1/audio/transcriptions");
+    curl_easy_setopt(curl, CURLOPT_MIMEPOST, form);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+        +[](void* ptr, size_t sz, size_t nm, std::string* s) -> size_t {
+            s->append(static_cast<char*>(ptr), sz * nm);
+            return sz * nm;
+        });
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+
+    CURLcode code = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+    curl_mime_free(form);
+    curl_easy_cleanup(curl);
+
+    if (code != CURLE_OK) {
+        log().error("[STT] curl error: {}", curl_easy_strerror(code));
+        return "";
+    }
+
+    try {
+        auto j = json::parse(responseBody);
+        if (j.contains("text")) return j["text"].get<std::string>();
+        if (j.contains("error")) {
+            log().error("[STT] API error: {}", j["error"]["message"].get<std::string>());
+        }
+    } catch (...) {
+        log().error("[STT] Falha ao parsear resposta Whisper.");
+    }
+    return "";
 }
 
 void AgentController::processInput(int64_t chatId, const std::string& userId,
                                     const std::string& text, bool requiresAudio) {
     try {
         // 1. Persiste mensagem
-        memory_->saveUserMessage(userId, text);
+        if (cfg().get("MEMORY_ENABLED", "true") != "false") {
+            memory_->saveUserMessage(userId, text);
+        }
 
         // 2. Carrega skills (hot-reload)
-        auto skills = skillLoader_.loadAll();
+        std::vector<SkillMeta> skills;
+        std::optional<SkillMeta> skill;
+        if (cfg().get("SKILLS_ENABLED", "true") != "false") {
+            skills = skillLoader_.loadAll();
 
         // 3. Roteia skill
-        auto skill = skillRouter_.route(text, skills);
+            skill = skillRouter_.route(text, skills);
+        }
 
         // 4. Monta system prompt
         int tzOffset      = Utils::timezoneOffsetHours();
@@ -177,7 +300,9 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
         }
 
         // 5. Contexto da memória
-        auto context = memory_->getContext(userId);
+        auto context = (cfg().get("MEMORY_ENABLED", "true") != "false")
+            ? memory_->getContext(userId)
+            : std::vector<LlmMessage>{{"user", text}};
 
         // 6. Executa AgentLoop
         auto provider = ProviderFactory::create();
@@ -185,7 +310,9 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
         auto result = loop.run(context, sysPrompt, requiresAudio);
 
         // 7. Persiste resposta
-        memory_->saveAssistantMessage(userId, result.answer);
+        if (cfg().get("MEMORY_ENABLED", "true") != "false") {
+            memory_->saveAssistantMessage(userId, result.answer);
+        }
 
         // 8. Envia resposta
         bot_.sendMessage(chatId, result.answer);

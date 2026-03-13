@@ -59,6 +59,24 @@ O agente possui acesso às seguintes ferramentas, registradas automaticamente no
 | `IndexDocumentTool` | `indexar_documento` | Indexa um arquivo na base RAG. Args: `filepath`, `chunk_size` (opcional), `force` (opcional). |
 | `SemanticSearchTool` | `busca_semantica` | Busca documentos indexados por similaridade semântica. Args: `query`, `top_k` (opcional). |
 
+### Mensagens de voz (Whisper STT)
+
+O bot transcreve automaticamente mensagens de voz via **OpenAI Whisper API** (`whisper-1`). Quando o usuário envia um áudio, o bot:
+
+1. Baixa o arquivo `.oga` para `./tmp/`
+2. Envia para `https://api.openai.com/v1/audio/transcriptions`
+3. Encaminha a transcrição ao Agent Loop como texto
+4. Responde em áudio automaticamente (se `TTS_ENABLED=true`)
+5. Remove o arquivo temporário
+
+Usa a `OPENAI_API_KEY` já configurada. Sem dependências extras.
+
+```env
+VOICE_ENABLED=true       # habilita/desabilita o handler de voz
+WHISPER_MODEL=whisper-1  # modelo (sempre whisper-1 para a API OpenAI)
+WHISPER_LANGUAGE=pt      # idioma (vazio = auto-detect)
+```
+
 ### Configuração da pesquisa na internet
 
 Crie uma conta em [serper.dev](https://serper.dev) (2.500 buscas/mês gratuitas, sem cartão) e adicione a chave no `.env`:
@@ -91,6 +109,51 @@ O DaniClaw suporta RAG (Retrieval-Augmented Generation) com [sqlite-vec](https:/
 - Vetores armazenados no mesmo SQLite via extensão `vec0`
 - Chunking automático com overlap (padrão: 800 chars, overlap 100)
 - Para reindexar um arquivo: `force=true`
+
+## Monitoramento de Gmail (IMAP)
+
+O DaniClaw pode monitorar sua caixa de entrada do Gmail e notificar chats do Telegram quando novos e-mails chegarem.
+
+**Configuração:**
+
+1. Ative a autenticação de dois fatores no Google e gere uma [senha de app](https://myaccount.google.com/apppasswords).
+2. Preencha no `.env`:
+
+```env
+GMAIL_ENABLED=true
+GMAIL_USER=seuemail@gmail.com
+GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+GMAIL_NOTIFY_CHAT_IDS=123456789           # chat IDs separados por vírgula
+GMAIL_POLL_INTERVAL_SEC=60                # frequência de checagem
+```
+
+**Como funciona:**
+- Usa libcurl com protocolo IMAP para buscar e-mails `UNSEEN`
+- UIDs já notificados são persistidos em SQLite (tabela `gmail_seen`)
+- Envia título + remetente para os chats configurados
+
+---
+
+## Feature Toggles
+
+Todos os recursos podem ser desabilitados individualmente no `.env` sem recompilar:
+
+| Variável | Padrão | Recurso |
+|----------|--------|---------|
+| `TOOL_FILE_ENABLED` | `true` | Ferramentas `criar_arquivo` e `ler_arquivo` |
+| `TOOL_REMINDERS_ENABLED` | `true` | Ferramenta `agendar_lembrete` |
+| `TOOL_TIMEZONE_ENABLED` | `true` | Ferramenta `definir_timezone` |
+| `TOOL_SHELL_ENABLED` | `true` | Ferramenta `executar_comando` |
+| `TOOL_WEB_SEARCH_ENABLED` | `true` | Ferramenta `pesquisar_internet` |
+| `TOOL_RAG_ENABLED` | `true` | Ferramentas RAG (`indexar_documento`, `busca_semantica`) |
+| `SKILLS_ENABLED` | `true` | Roteamento e injeção de skills |
+| `MEMORY_ENABLED` | `true` | Histórico de conversas (contexto entre mensagens) |
+| `TTS_ENABLED` | `true` | Resposta em áudio (síntese de fala) |
+| `VOICE_ENABLED` | `true` | Handler de mensagens de voz (transcrição Whisper) |
+| `DOCUMENT_ENABLED` | `true` | Handler de documentos PDF/Markdown |
+| `GMAIL_ENABLED` | `false` | Poller IMAP do Gmail |
+
+---
 
 ## Personalizando o Assistente com Skills
 

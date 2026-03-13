@@ -35,4 +35,8 @@ private:
     void handleText(const Telegram::Message& msg);
     void handleDocument(const Telegram::Message& msg);
     void handleVoice(const Telegram::Message& msg);
+
+    // Transcreve arquivo de áudio via OpenAI Whisper API.
+    // Retorna string vazia em caso de falha.
+    std::string transcribeAudio(const std::string& filePath);
 };
