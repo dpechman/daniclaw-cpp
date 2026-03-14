@@ -47,7 +47,29 @@ AgentLoopResult AgentLoop::run(
 
         auto toolCall = parseToolCall(response);
         if (!toolCall.has_value()) {
-            log().info("[AgentLoop] ✅ Resposta final na iteração {}.", iter);
+            // Detecta respostas de postergacao sem chamada de ferramenta
+            static const std::vector<std::string> stallPhrases = {
+                "vou pesquisar", "vou verificar", "vou buscar", "vou consultar",
+                "um momento", "aguarde", "deixa eu verificar", "deixa eu buscar",
+                "vou procurar", "estou verificando", "estou buscando",
+                "preciso verificar", "preciso buscar", "vou checar"
+            };
+            std::string lower = response;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            bool isStalling = false;
+            for (const auto& phrase : stallPhrases) {
+                if (lower.find(phrase) != std::string::npos) { isStalling = true; break; }
+            }
+            if (isStalling && iter < maxIterations_) {
+                log().warn("[AgentLoop] ⚠️ Resposta de postergacao detectada na iteracao {}. Forcando uso de ferramenta.", iter);
+                history.push_back(LlmMessage{"assistant", response});
+                history.push_back(LlmMessage{"user",
+                    "Voce disse que ia buscar mas nao chamou nenhuma ferramenta. "
+                    "Chame a ferramenta AGORA neste mesmo turno. "
+                    "NAO responda com texto — execute a ferramenta diretamente."});
+                continue;
+            }
+            log().info("[AgentLoop] ✅ Resposta final na iteracao {}.", iter);
             return {response, requiresAudio};
         }
 
