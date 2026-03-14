@@ -152,6 +152,7 @@ Todos os recursos podem ser desabilitados individualmente no `.env` sem recompil
 | `VOICE_ENABLED` | `true` | Handler de mensagens de voz (transcrição Whisper) |
 | `DOCUMENT_ENABLED` | `true` | Handler de documentos PDF/Markdown |
 | `GMAIL_ENABLED` | `false` | Poller IMAP do Gmail |
+| `MULTI_AGENT_ENABLED` | `true` | Painel de 3 agentes para perguntas factuais (Pesquisador → Crítico → Sintetizador) |
 
 ---
 

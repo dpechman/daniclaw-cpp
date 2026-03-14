@@ -9,6 +9,7 @@
 #include "../tools/WebSearchTool.h"
 #include "../tools/SemanticSearchTool.h"
 #include "../tools/IndexDocumentTool.h"
+#include "../agent/DebateCoordinator.h"
 #include "../utils/Utils.h"
 #include <sstream>
 #include <filesystem>
@@ -313,52 +314,59 @@ void AgentController::processInput(int64_t chatId, const std::string& userId,
             ? memory_->getContext(userId)
             : std::vector<LlmMessage>{{"user", text}};
 
-        // 6. Executa AgentLoop
-        auto provider = ProviderFactory::create();
-        AgentLoop loop(provider, toolRegistry_);
+        // 6. Decide: debate multi-agente ou loop simples
+        std::string finalAnswer;
 
-        // Mensagens de progresso por ferramenta
-        static const std::map<std::string, std::string> kToolMsg = {
-            {"pesquisar_internet",  "\xf0\x9f\x94\x8d Pesquisando na internet..."},
-            {"executar_comando",    "\xe2\x9a\x99\xef\xb8\x8f Executando comando..."},
-            {"busca_semantica",     "\xf0\x9f\xa7\xa0 Consultando base de conhecimento..."},
-            {"indexar_documento",   "\xf0\x9f\x93\x9a Indexando documento..."},
-        };
+        DebateCoordinator debate(toolRegistry_);
+        if (debate.needsDebate(text)) {
+            log().info("[AgentController] Usando painel multi-agente.");
+            finalAnswer = debate.run(text, sysPrompt,
+                [this, chatId](const std::string& msg) {
+                    bot_.sendChatAction(chatId, "typing");
+                    bot_.sendMessage(chatId, msg);
+                });
+        } else {
+            // Loop ReAct simples
+            auto provider = ProviderFactory::create();
+            AgentLoop loop(provider, toolRegistry_);
 
-        loop.setStepCallback([this, chatId](const std::string& toolName, int /*iter*/) {
-            bot_.sendChatAction(chatId, "typing");
-            auto it = kToolMsg.find(toolName);
-            if (it != kToolMsg.end()) {
-                bot_.sendMessage(chatId, it->second);
-            }
-        });
+            static const std::map<std::string, std::string> kToolMsg = {
+                {"pesquisar_internet",  "\xf0\x9f\x94\x8d Pesquisando na internet..."},
+                {"executar_comando",    "\xe2\x9a\x99\xef\xb8\x8f Executando comando..."},
+                {"busca_semantica",     "\xf0\x9f\xa7\xa0 Consultando base de conhecimento..."},
+                {"indexar_documento",   "\xf0\x9f\x93\x9a Indexando documento..."},
+            };
+            loop.setStepCallback([this, chatId](const std::string& toolName, int /*iter*/) {
+                bot_.sendChatAction(chatId, "typing");
+                auto it = kToolMsg.find(toolName);
+                if (it != kToolMsg.end()) bot_.sendMessage(chatId, it->second);
+            });
 
-        // Thread auxiliar: renova "typing" a cada 4s enquanto o loop estiver ativo
-        // RAII guard garante join mesmo em caso de excecao
-        std::atomic<bool> loopDone{false};
-        std::thread typingThread([this, chatId, &loopDone]() {
-            while (!loopDone.load()) {
-                std::this_thread::sleep_for(std::chrono::seconds(4));
-                if (!loopDone.load()) bot_.sendChatAction(chatId, "typing");
-            }
-        });
-        struct ThreadGuard {
-            std::thread& t;
-            std::atomic<bool>& done;
-            ~ThreadGuard() { done.store(true); if (t.joinable()) t.join(); }
-        } guard{typingThread, loopDone};
+            std::atomic<bool> loopDone{false};
+            std::thread typingThread([this, chatId, &loopDone]() {
+                while (!loopDone.load()) {
+                    std::this_thread::sleep_for(std::chrono::seconds(4));
+                    if (!loopDone.load()) bot_.sendChatAction(chatId, "typing");
+                }
+            });
+            struct ThreadGuard {
+                std::thread& t; std::atomic<bool>& done;
+                ~ThreadGuard() { done.store(true); if (t.joinable()) t.join(); }
+            } guard{typingThread, loopDone};
 
-        auto result = loop.run(context, sysPrompt, requiresAudio);
-        loopDone.store(true);
-        typingThread.join();
+            auto result = loop.run(context, sysPrompt, requiresAudio);
+            loopDone.store(true);
+            typingThread.join();
+            finalAnswer = result.answer;
+        }
 
         // 7. Persiste resposta
         if (cfg().get("MEMORY_ENABLED", "true") != "false") {
-            memory_->saveAssistantMessage(userId, result.answer);
+            memory_->saveAssistantMessage(userId, finalAnswer);
         }
 
         // 8. Envia resposta
-        bot_.sendMessage(chatId, result.answer);
+        bot_.sendMessage(chatId, finalAnswer);
 
     } catch (const std::exception& e) {
         log().error("[AgentController] Erro no pipeline: {}", e.what());
