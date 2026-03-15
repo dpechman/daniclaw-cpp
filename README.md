@@ -156,6 +156,53 @@ Todos os recursos podem ser desabilitados individualmente no `.env` sem recompil
 
 ---
 
+## Painel Multi-Agente (Debate)
+
+Para perguntas factuais que exigem pesquisa e verificação, o DaniClaw aciona automaticamente um painel de **3 agentes especializados** em sequência — garantindo respostas mais confiáveis e bem fundamentadas.
+
+### Fluxo
+
+```
+Pergunta do usuário
+       │
+       ▼
+┌──────────────────┐
+│  🔎 Pesquisador  │  Usa pesquisar_internet e outras tools para buscar dados reais
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  🧐 Crítico      │  Avalia a pesquisa, aponta lacunas, adiciona contexto e ressalvas
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  ✍️ Sintetizador │  Produz a resposta final clara, confiante e bem formatada
+└──────────────────┘
+```
+
+### Quando é acionado
+
+O painel é ativado automaticamente para perguntas que contenham gatilhos factuais como:
+`quanto custa`, `previsão do tempo`, `quando abre`, `cotação`, `notícias`, `passagem`, `resultado`, `quem é`, `onde fica`, `pesquise`, e outros.
+
+Para conversas simples o bot usa o loop ReAct normal, sem overhead.
+
+### Progresso visível
+
+O usuário recebe mensagens intermediárias durante o processo:
+- `🔎 Consultando especialistas...`
+- `🧐 Verificando as informações...`
+- `✍️ Consolidando resposta...`
+
+### Configuração
+
+```env
+MULTI_AGENT_ENABLED=true   # false para desativar e usar só o loop simples
+```
+
+---
+
 ## Personalizando o Assistente com Skills
 
 Skills são "modos de comportamento" carregados dinamicamente que transformam o DaniClaw em qualquer tipo de assistente especializado — sem recompilar o código.
